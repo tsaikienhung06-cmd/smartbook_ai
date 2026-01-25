@@ -1,0 +1,80 @@
+/* Additional styles for SmartBook AI */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Print styles */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    .report-card, .report-card * {
+        visibility: visible;
+    }
+    .report-card {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+    }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+}
+
+/* Loading animation */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.loading-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Smooth transitions */
+.report-card, .metric-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.report-card:hover, .metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    #app {
+        padding: 1rem !important;
+    }
+    
+    .lg\\:flex {
+        flex-direction: column;
+    }
+    
+    .lg\\:w-1\\/3, .lg\\:w-2\\/3 {
+        width: 100% !important;
+    }
+    
+    .report-table td, .report-table th {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+}

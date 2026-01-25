@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartBook AI - Easy Financial Reporting (MASB Style)</title>
+    <script src="https://cdn.tailwindcss.com/3.4.0"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- PDF Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <!-- Charting Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f7f7f9; }
+        .report-table td, .report-table th { padding: 0.5rem 1rem; }
+        
+        .report-card {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Styles for the navigation tabs */
+        .tab-button {
+            padding: 0.5rem 1rem;
+            border-bottom: 2px solid transparent;
+            font-weight: 600;
+            color: #6b7280; /* gray-500 */
+            transition: all 0.15s ease-in-out;
+        }
+        .tab-button.active {
+            border-color: #4f46e5; /* indigo-600 */
+            color: #4f46e5; /* indigo-600 */
+            background-color: #f7f7f9;
+        }
+        
+        /* Dashboard Card Styles */
+        .metric-card {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+            border: 1px solid #e5e7eb;
+        }
+        
+        /* Hide language modal by default */
+        #language-modal {
+            display: none;
+        }
+        #language-modal.show {
+            display: flex;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app" class="min-h-screen p-4 sm:p-8">
+    <!-- Header -->
+    <header class="mb-8 border-b pb-4 no-print flex justify-between items-start sm:items-center">
+        <div class="flex-grow">
+            <h1 class="text-3xl font-bold text-gray-800">SmartBook <span class="text-indigo-600">AI</span></h1>
+            <p id="app-subtitle" class="text-sm text-gray-500"></p>
+            <div id="auth-status" class="text-xs text-gray-400 mt-2">Using Local Storage</div>
+        </div>
+        <!-- Language Selector -->
+        <div class="flex flex-col items-end space-y-1 ml-4">
+            <label for="language-select" class="text-xs font-medium text-gray-700">Language / Bahasa:</label>
+            <select id="language-select" onchange="setLanguage(this.value)" class="rounded-md border-gray-300 text-sm shadow-sm p-1.5 border focus:ring-indigo-500 focus:border-indigo-500">
+                <option value="en">English</option>
+                <option value="ml">Bahasa Melayu</option>
+            </select>
+        </div>
+    </header>
+
+    <div class="lg:flex lg:space-x-8">
+        <!-- 1. Transaction Input Form -->
+        <div class="lg:w-1/3 mb-8 lg:mb-0 no-print">
+            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+                <h2 id="form-title" class="text-xl font-semibold mb-4 text-indigo-600"></h2>
+                <form id="transaction-form" class="space-y-4">
+                    <div>
+                        <label for="date" id="label-date" class="block text-sm font-medium text-gray-700"></label>
+                        <input type="date" id="date" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+
+                    <div>
+                        <label for="description" id="label-description" class="block text-sm font-medium text-gray-700"></label>
+                        <input type="text" id="description" placeholder="..." required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+
+                    <div>
+                        <label for="category" id="label-category" class="block text-sm font-medium text-gray-700"></label>
+                        <select id="category" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-indigo-500 focus:border-indigo-500">
+                            <!-- Options populated by JS -->
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="amount" id="label-amount" class="block text-sm font-medium text-gray-700"></label>
+                        <input type="number" id="amount" step="0.01" min="0.01" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+
+                    <button type="submit" id="transaction-button" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
+                    </button>
+                    <button type="button" id="cancel-edit-button" onclick="resetForm()" class="w-full mt-2 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-100 transition duration-150 hidden">
+                    </button>
+                    <div id="status-message" class="text-sm mt-2 text-center hidden"></div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 2. Reports Viewer (Tabbed Interface) -->
+        <div class="lg:w-2/3">
+            
+            <!-- Navigation Tabs & Month Picker -->
+            <div id="view-controls" class="no-print bg-white p-4 rounded-xl shadow-lg mb-4">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                    <h2 id="report-viewer-title" class="text-2xl font-semibold text-gray-800 mb-2 sm:mb-0"></h2>
+                    <div class="flex items-center space-x-2">
+                        <label for="report-month" id="label-reporting-period" class="text-sm font-medium text-gray-700 whitespace-nowrap"></label>
+                        <input type="month" id="report-month" class="rounded-md border-gray-300 shadow-sm p-2 border focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <!-- Tabs (Buttons) -->
+                <div class="flex space-x-2 border-b border-gray-200 -mb-4 overflow-x-auto">
+                    <button id="tab-transactions" onclick="showView('transactions')" class="tab-button"></button>
+                    <button id="tab-sopl" onclick="showView('sopl')" class="tab-button"></button>
+                    <button id="tab-sofp" onclick="showView('sofp')" class="tab-button"></button>
+                    <button id="tab-socf" onclick="showView('socf')" class="tab-button"></button>
+                    <button id="tab-dashboard" onclick="showView('dashboard')" class="tab-button"></button>
+                </div>
+            </div>
+
+            <!-- All Viewable Content Containers -->
+            <div id="content-views">
+                
+                <!-- Dashboard View -->
+                <div id="view-dashboard" class="report-view">
+                    <div id="dashboard-placeholder" class="bg-white p-6 rounded-xl shadow-lg border border-gray-100 text-center text-gray-500">
+                        Loading Dashboard...
+                    </div>
+                </div>
+
+                <!-- SOPL View -->
+                <div id="view-sopl" class="report-view hidden">
+                     <div id="sopl-placeholder" class="bg-white p-6 rounded-xl shadow-lg border border-gray-100 text-center text-gray-500">
+                    </div>
+                </div>
+                
+                <!-- SOFP View -->
+                <div id="view-sofp" class="report-view hidden">
+                    <div id="sofp-placeholder" class="bg-white p-6 rounded-xl shadow-lg border border-gray-100 text-center text-gray-500">
+                    </div>
+                </div>
+                
+                <!-- SOCF View -->
+                <div id="view-socf" class="report-view hidden">
+                    <div id="socf-placeholder" class="bg-white p-6 rounded-xl shadow-lg border border-gray-100 text-center text-gray-500">
+                    </div>
+                </div>
+
+                <!-- Transaction List View -->
+                <div id="view-transactions" class="report-view hidden">
+                     <div class="mt-4 pt-4 border-t">
+                        <h3 id="transactions-header" class="text-xl font-semibold mb-4 text-gray-800"></h3>
+                        <div id="transactions-list-container" class="bg-white rounded-xl shadow-lg overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th id="th-date" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"></th>
+                                        <th id="th-description" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"></th>
+                                        <th id="th-category" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"></th>
+                                        <th id="th-amount" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"></th>
+                                        <th id="th-actions" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactions-list" class="bg-white divide-y divide-gray-200">
+                                    <tr><td colspan="5" class="px-6 py-4 text-center text-gray-400">Loading transactions...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Language Selection Modal -->
+<div id="language-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center">
+    <div class="bg-white p-8 rounded-xl shadow-2xl max-w-sm w-full text-center">
+        <h2 class="text-2xl font-bold text-indigo-600 mb-4">Choose Language / Pilih Bahasa</h2>
+        <p class="text-gray-600 mb-6">Select your preferred language to start using SmartBook AI.</p>
+        <div class="space-y-4">
+            <button onclick="selectLanguageAndStart('en')" class="w-full py-3 px-4 border border-transparent rounded-lg shadow-sm text-lg font-semibold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
+                English
+            </button>
+            <button onclick="selectLanguageAndStart('ml')" class="w-full py-3 px-4 border border-transparent rounded-lg shadow-sm text-lg font-semibold text-gray-700 bg-gray-200 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition duration-150">
+                Bahasa Melayu
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- GLOBAL VARIABLES & STATE ---
+    let allTransactions = []; // Holds ALL transactions from localStorage
+    let editingTransactionId = null;
+    let currentView = 'dashboard'; // Track the currently active view
+    let chartInstance = null; // To hold the Chart.js instance
+    let currentLanguage = 'en'; // Default language
+    
+    // LANGUAGE PACKS
+    const L_EN = {
+        title: "SmartBook AI",
+        subtitle: "MASB Simplified Financial Reporting (Cash Basis).",
+        connect: "Connecting...",
+        authenticated: (userId) => `Using Local Storage`,
+        error: (msg) => `Error: ${msg}`,
+        form_title: "Record Transaction",
+        label_date: "Date",
+        label_description: "Description",
+        label_category: "Category (Simple)",
+        label_amount: "Amount (RM)",
+        record_button: "Record Transaction",
+        update_button: "Update Transaction",
+        cancel_button: "Cancel Edit",
+        report_viewer_title: "Financial Reports",
+        label_reporting_period: "Reporting Period:",
+        tab_transactions: "History",
+        tab_sopl: "P/L (SOPL)",
+        tab_sofp: "Position (SOFP)", 
+        tab_socf: "Cash Flow (SOCF)",
+        tab_dashboard: "Dashboard",
+        th_date: "Date",
+        th_description: "Description",
+        th_category: "Category",
+        th_amount: "Amount (RM)",
+        th_actions: "Actions",
+        edit: "Edit",
+        delete: "Delete",
+        list_header: "Transaction History (Audit Trail)",
+        no_trans: "No transactions recorded yet.",
+        no_data_msg: "No transactions recorded for this period.",
+        no_month_msg: "Please select a reporting period.",
+        loading: "Loading transactions...",
+        status_saving: "Saving...",
+        status_updating: "Updating...",
+        status_success: "Transaction recorded successfully!",
+        status_update_success: "Transaction updated successfully!",
+        status_delete_success: "Transaction deleted successfully.",
+        status_edit_id: (id) => `Editing transaction ID: ${id}`,
+        sopl_title: "Statement of Profit or Loss (SOPL)",
+        sofp_title: "Statement of Financial Position (SOFP)",
+        socf_title: "Statement of Cash Flow (SOCF)",
+        sopl_placeholder: "Select a period and record transactions to view the Statement of Profit or Loss.",
+        sofp_placeholder: "The Statement of Financial Position will appear here.",
+        socf_placeholder: "The Statement of Cash Flow will appear here.",
+        
+        // Categories
+        cat_select: "Select a category",
+        cat_group_income: "Income & Financing Inflows",
+        cat_sales: "Sales Revenue (Service/Goods)",
+        cat_interest: "Interest Received",
+        cat_capital: "Owner/Investor Capital",
+        cat_loan: "Bank Loan / Financing",
+        cat_group_expense: "Operating Expenses",
+        cat_rent: "Rent Expense",
+        cat_utilities: "Utilities (Electric, Water)",
+        cat_wages: "Wages & Salaries",
+        cat_supplies: "Supplies & Consumables",
+        cat_other_op: "Other Operating Expense",
+        cat_group_investment: "Investment & Drawings",
+        cat_equipment: "Equipment Purchase (Asset)",
+        cat_drawings: "Owner Drawings / Withdrawal",
+        
+        // Report Line Item Keys
+        "Revenue": "Revenue",
+        "Other Income": "Other Income",
+        "Operating Expenses": "Operating Expenses",
+        "Cash & Bank Balance": "Cash & Bank Balance",
+        "Equipment": "Equipment",
+        "Owner's Capital": "Owner's Capital",
+        "Loan Payable": "Loan Payable",
+        "Owner's Drawings": "Owner's Drawings",
+        "Sales Revenue": "Sales Revenue",
+        "Interest Income": "Interest Income",
+        "Rent Expense": "Rent Expense",
+        "Utilities Expense": "Utilities Expense",
+        "Wages & Salaries Expense": "Wages & Salaries Expense",
+        "Supplies Expense": "Supplies Expense",
+        "Other Operating Expense": "Other Operating Expense",
+        
+        // Report Sections
+        report_revenue: "REVENUE",
+        report_expenses: "EXPENSES",
+        report_total_revenue: "TOTAL REVENUE",
+        report_total_expenses: "TOTAL EXPENSES",
+        report_net_profit: "NET PROFIT / (LOSS)",
+        report_assets: "ASSETS",
+        report_liabilities_equity: "LIABILITIES & EQUITY",
+        report_current_assets: "Current Assets",
+        report_non_current_assets: "Non-Current Assets",
+        report_cash: "Cash & Bank Balance",
+        report_total_assets: "TOTAL ASSETS",
+        report_liabilities: "Liabilities",
+        report_total_liabilities: "Total Liabilities",
+        report_equity: "Equity",
+        report_opening_capital: "Opening Capital + Drawings/Injection",
+        report_retained_earnings: "Retained Earnings / Net Profit",
+        report_closing_equity: "CLOSING EQUITY",
+        report_total_l_e: "TOTAL LIABILITIES & EQUITY",
+        report_balance_check: (check, diff) => `Accounting Equation Status: ${check} (Difference: ${formatCurrency(diff)})`,
+        report_balanced: "Balanced",
+        report_unbalanced: "UNBALANCED!",
+
+        // SOCF
+        cf_operating: "CASH FLOW FROM OPERATING ACTIVITIES",
+        cf_investing: "CASH FLOW FROM INVESTING ACTIVITIES",
+        cf_financing: "CASH FLOW FROM FINANCING ACTIVITIES",
+        cf_net_op: "Net Cash from Operating Activities",
+        cf_net_inv: "Net Cash from Investing Activities",
+        cf_net_fin: "Net Cash from Financing Activities",
+        cf_net_change: "Net Increase / (Decrease) in Cash",
+        cf_ending_cash: "ENDING CASH BALANCE",
+        
+        // Dashboard
+        dashboard_title: "Key Business Health Metrics (Cumulative)",
+        dashboard_trend_title: "Monthly Performance Trend",
+        dashboard_trend_subtitle: "This chart shows how your income (Revenue) compares to your spending (Expenses) over time, and the resulting profit (Net Profit).",
+        metric_profitability: "1. Profitability Score",
+        metric_profitability_desc: "The percentage of every RM1 of sales that turns into profit. Aim for high values!",
+        metric_safety: "2. Financial Safety Score",
+        metric_safety_desc_inf: "No debt recorded, indicating very high financial security.",
+        metric_safety_desc_safe: (ratio) => `Your assets can cover debts ${ratio.toFixed(1)} times. Score > 1 is safe.`,
+        metric_safety_desc_risk: "Your debts are higher than your assets. Take immediate action.",
+        metric_asset_efficiency: "3. Asset Efficiency",
+        metric_asset_efficiency_desc: "How much profit you generate for every RM1 worth of company assets (equipment, cash, etc.).",
+        
+        // Chart Labels
+        chart_income: 'Total Income (Revenue)',
+        chart_spending: 'Total Spending (Expenses)',
+        chart_profit: 'Net Profit',
+        chart_trend_title: 'Income, Spending & Profit Trend',
+        chart_y_title: 'Amount (RM)',
+        
+        // PDF
+        pdf_download: "Download PDF",
+        pdf_generating: (type) => `Generating PDF for ${type}... Please wait.`,
+        pdf_success: (name) => `'${name}' downloaded successfully.`,
+        pdf_error: (msg) => `Error generating PDF: ${msg}. Check console for details.`,
+    };
+
+    // Malay Labels (Bahasa Melayu)
+    const L_ML = {
+        title: "SmartBook AI",
+        subtitle: "Pelaporan Kewangan Ringkas MASB (Asas Tunai).",
+        connect: "Menyambung...",
+        authenticated: (userId) => `Menggunakan Local Storage`,
+        error: (msg) => `Ralat: ${msg}`,
+        form_title: "Rekod Transaksi",
+        label_date: "Tarikh",
+        label_description: "Huraian",
+        label_category: "Kategori (Ringkas)",
+        label_amount: "Jumlah (RM)",
+        record_button: "Rekod Transaksi",
+        update_button: "Kemaskini Transaksi",
+        cancel_button: "Batal Suntingan",
+        report_viewer_title: "Laporan Kewangan",
+        label_reporting_period: "Tempoh Pelaporan:",
+        tab_transactions: "Sejarah",
+        tab_sopl: "U/R (SOPL)",
+        tab_sofp: "Kedudukan (SOFP)", 
+        tab_socf: "Aliran Tunai (SOCF)",
+        tab_dashboard: "Papan Pemuka",
+        th_date: "Tarikh",
+        th_description: "Huraian",
+        th_category: "Kategori",
+        th_amount: "Jumlah (RM)",
+        th_actions: "Tindakan",
+        edit: "Sunting",
+        delete: "Padam",
+        list_header: "Sejarah Transaksi (Jejak Audit)",
+        no_trans: "Tiada transaksi direkodkan lagi.",
+        no_data_msg: "Tiada data transaksi direkodkan untuk tempoh ini.",
+        no_month_msg: "Sila pilih tempoh pelaporan.",
+        loading: "Memuatkan transaksi...",
+        status_saving: "Menyimpan...",
+        status_updating: "Mengemaskini...",
+        status_success: "Transaksi berjaya direkodkan!",
+        status_update_success: "Transaksi berjaya dikemaskini!",
+        status_delete_success: "Transaksi berjaya dipadam.",
+        status_edit_id: (id) => `Menyunting ID transaksi: ${id}`,
+        sopl_title: "Penyata Untung Rugi (SOPL)",
+        sofp_title: "Penyata Kedudukan Kewangan (SOFP)",
+        socf_title: "Penyata Aliran Tunai (SOCF)",
+        sopl_placeholder: "Pilih tempoh dan rekod transaksi untuk melihat Penyata Untung Rugi.",
+        sofp_placeholder: "Penyata Kedudukan Kewangan akan dipaparkan di sini.",
+        socf_placeholder: "Penyata Aliran Tunai akan dipaparkan di sini.",
+        
+        // Categories
+        cat_select: "Pilih kategori",
+        cat_group_income: "Aliran Masuk Pendapatan & Pembiayaan",
+        cat_sales: "Hasil Jualan (Perkhidmatan/Barangan)",
+        cat_interest: "Faedah Diterima",
+        cat_capital: "Modal Pemilik/Pelabur",
+        cat_loan: "Pinjaman Bank / Pembiayaan",
+        cat_group_expense: "Perbelanjaan Operasi",
+        cat_rent: "Sewa Dibayar",
+        cat_utilities: "Utiliti (Elektrik, Air)",
+        cat_wages: "Gaji & Upah",
+        cat_supplies: "Bekalan & Bahan Habis Guna",
+        cat_other_op: "Perbelanjaan Operasi Lain",
+        cat_group_investment: "Pelaburan & Pengeluaran",
+        cat_equipment: "Pembelian Peralatan (Aset)",
+        cat_drawings: "Pengeluaran Pemilik",
+        
+        // Report Line Item Keys
+        "Revenue": "Hasil",
+        "Other Income": "Pendapatan Lain",
+        "Operating Expenses": "Perbelanjaan Operasi",
+        "Cash & Bank Balance": "Tunai & Baki Bank",
+        "Equipment": "Peralatan",
+        "Owner's Capital": "Modal Pemilik",
+        "Loan Payable": "Pinjaman Belum Bayar",
+        "Owner's Drawings": "Pengeluaran Pemilik",
+        "Sales Revenue": "Hasil Jualan",
+        "Interest Income": "Pendapatan Faedah",
+        "Rent Expense": "Belanja Sewa",
+        "Utilities Expense": "Belanja Utiliti",
+        "Wages & Salaries Expense": "Belanja Gaji & Upah",
+        "Supplies Expense": "Belanja Bekalan",
+        "Other Operating Expense": "Belanja Operasi Lain",
+        
+        // Report Sections
+        report_revenue: "HASIL",
+        report_expenses: "PERBELANJAAN",
+        report_total_revenue: "JUMLAH HASIL",
+        report_total_expenses: "JUMLAH PERBELANJAAN",
+        report_net_profit: "UNTUNG / (RUGI) BERSIH",
+        report_assets: "ASET",
+        report_liabilities_equity: "LIABILITI & EKUITI",
+        report_current_assets: "Aset Semasa",
+        report_non_current_assets: "Aset Bukan Semasa",
+        report_cash: "Tunai & Baki Bank",
+        report_total_assets: "JUMLAH ASET",
+        report_liabilities: "Liabiliti",
+        report_total_liabilities: "Jumlah Liabiliti",
+        report_equity: "Ekuiti",
+        report_opening_capital: "Modal Permulaan + Pengeluaran/Suntikan",
+        report_retained_earnings: "Untung Terkumpul / Untung Bersih",
+        report_closing_equity: "EKUITI PENUTUPAN",
+        report_total_l_e: "JUMLAH LIABILITI & EKUITI",
+        report_balance_check: (check, diff) => `Status Persamaan Perakaunan: ${check} (Perbezaan: ${formatCurrency(diff)})`,
+        report_balanced: "Seimbang",
+        report_unbalanced: "TIDAK SEIMBANG!",
+
+        // SOCF
+        cf_operating: "ALIRAN TUNAI DARIPADA AKTIVITI OPERASI",
+        cf_investing: "ALIRAN TUNAI DARIPADA AKTIVITI PELABURAN",
+        cf_financing: "ALIRAN TUNAI DARIPADA AKTIVITI PEMBIAYAAN",
+        cf_net_op: "Tunai Bersih daripada Aktiviti Operasi",
+        cf_net_inv: "Tunai Bersih daripada Aktiviti Pelaburan",
+        cf_net_fin: "Tunai Bersih daripada Aktiviti Pembiayaan",
+        cf_net_change: "Kenaikan / (Penurunan) Bersih dalam Tunai",
+        cf_ending_cash: "BAKI TUNAI AKHIR",
+        
+        // Dashboard
+        dashboard_title: "Metrik Kesihatan Perniagaan Utama (Kumulatif)",
+        dashboard_trend_title: "Trend Prestasi Bulanan",
+        dashboard_trend_subtitle: "Carta ini menunjukkan perbandingan pendapatan (Hasil) anda dengan perbelanjaan (Belanja) dari semasa ke semasa, dan untung yang terhasil (Untung Bersih).",
+        metric_profitability: "1. Skor Keuntungan",
+        metric_profitability_desc: "Peratusan bagi setiap RM1 jualan yang bertukar menjadi untung. Sasarkan nilai yang tinggi!",
+        metric_safety: "2. Skor Keselamatan Kewangan",
+        metric_safety_desc_inf: "Tiada hutang direkodkan, menunjukkan keselamatan kewangan yang sangat tinggi.",
+        metric_safety_desc_safe: (ratio) => `Aset anda boleh menampung hutang ${ratio.toFixed(1)} kali ganda. Skor > 1 adalah selamat.`,
+        metric_safety_desc_risk: "Hutang anda lebih tinggi daripada aset anda. Ambil tindakan segera.",
+        metric_asset_efficiency: "3. Kecekapan Aset",
+        metric_asset_efficiency_desc: "Berapa banyak untung yang anda jana untuk setiap RM1 nilai aset syarikat (peralatan, tunai, dsb.).",
+        
+        // Chart Labels
+        chart_income: 'Jumlah Pendapatan (Hasil)',
+        chart_spending: 'Jumlah Perbelanjaan (Belanja)',
+        chart_profit: 'Untung Bersih',
+        chart_trend_title: 'Trend Pendapatan, Perbelanjaan & Untung',
+        chart_y_title: 'Jumlah (RM)',
+        
+        // PDF
+        pdf_download: "Muat Turun PDF",
+        pdf_generating: (type) => `Menjana PDF untuk ${type}... Sila tunggu.`,
+        pdf_success: (name) => `'${name}' berjaya dimuat turun.`,
+        pdf_error: (msg) => `Ralat menjana PDF: ${msg}. Semak konsol untuk butiran.`,
+    };
+    
+    // ACCOUNTING CLASSIFICATIONS (Must remain in English)
+    const ACCOUNT_MAP = {
+        "Sales Revenue": { account: "Sales Revenue", report: "SOPL", lineItem: "Revenue", effect: 1, flow: "Operating" },
+        "Interest Received": { account: "Interest Income", report: "SOPL", lineItem: "Other Income", effect: 1, flow: "Operating" },
+        "Rent Expense": { account: "Rent Expense", report: "SOPL", lineItem: "Operating Expenses", effect: -1, flow: "Operating" },
+        "Utilities Expense": { account: "Utilities Expense", report: "SOPL", lineItem: "Operating Expenses", effect: -1, flow: "Operating" },
+        "Wages & Salaries": { account: "Wages & Salaries Expense", report: "SOPL", lineItem: "Operating Expenses", effect: -1, flow: "Operating" },
+        "Supplies & Consumables": { account: "Supplies Expense", report: "SOPL", lineItem: "Operating Expenses", effect: -1, flow: "Operating" },
+        "Other Operating Expense": { account: "Other Operating Expense", report: "SOPL", lineItem: "Operating Expenses", effect: -1, flow: "Operating" },
+        "Equipment Purchase": { account: "Equipment", report: "SOFP", lineItem: "Non-current Assets", effect: 1, flow: "Investing" }, 
+        "Capital Injection": { account: "Owner's Capital", report: "SOFP", lineItem: "Equity", effect: 1, flow: "Financing" }, 
+        "Loan Received": { account: "Loan Payable", report: "SOFP", lineItem: "Non-current Liabilities", effect: 1, flow: "Financing" }, 
+        "Drawings": { account: "Owner's Drawings", report: "SOFP", lineItem: "Equity (Reduction)", effect: -1, flow: "Financing" }, 
+    };
+    
+    // Category display map
+    const CATEGORY_DISPLAY_MAP = {
+        "Sales Revenue": () => L.cat_sales,
+        "Interest Received": () => L.cat_interest,
+        "Rent Expense": () => L.cat_rent,
+        "Utilities Expense": () => L.cat_utilities,
+        "Wages & Salaries": () => L.cat_wages,
+        "Supplies & Consumables": () => L.cat_supplies,
+        "Other Operating Expense": () => L.cat_other_op,
+        "Equipment Purchase": () => L.cat_equipment,
+        "Capital Injection": () => L.cat_capital,
+        "Loan Received": () => L.cat_loan,
+        "Drawings": () => L.cat_drawings,
+    };
+    
+    // --- UTILITY FUNCTIONS ---
+    
+    let L = L_EN; // Active language object
+    
+    const formatCurrency = (amount) => {
+        return new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(amount);
+    };
+    
+    const formatPercentage = (value) => {
+        return new Intl.NumberFormat('en-US', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+    };
+    
+    function showStatusMessage(message, color) {
+        const statusMessage = document.getElementById('status-message');
+        statusMessage.textContent = message;
+        statusMessage.className = `text-sm mt-2 text-center text-${color}-600 block`;
+        if (color !== 'indigo') {
+            setTimeout(() => statusMessage.className = 'hidden', 4000);
+        }
+    }
+    
+    function formatMonthYear(yyyyMm) {
+        if (!yyyyMm) return '';
+        const [year, month] = yyyyMm.split('-');
+        const date = new Date(year, month - 1, 1);
+        const locale = currentLanguage === 'ml' ? 'ms-MY' : 'en-US';
+        return date.toLocaleDateString(locale, { year: 'numeric', month: 'long' });
+    }
+    
+    // --- LOCAL STORAGE OPERATIONS ---
+    
+    function loadTransactions() {
+        const stored = localStorage.getItem('smartbook_transactions');
+        allTransactions = stored ? JSON.parse(stored) : [];
+        renderTransactionList(allTransactions);
+        updateReportsView();
+    }
+    
+    function saveTransactions() {
+        localStorage.setItem('smartbook_transactions', JSON.stringify(allTransactions));
+    }
+    
+    // --- CRUD OPERATIONS ---
+    
+    window.editTransaction = function(transaction) {
+        editingTransactionId = transaction.id;
+        document.getElementById('date').value = transaction.date;
+        document.getElementById('description').value = transaction.description;
+        document.getElementById('category').value = transaction.category;
+        document.getElementById('amount').value = transaction.amount;
+        document.getElementById('transaction-button').textContent = L.update_button;
+        document.getElementById('cancel-edit-button').classList.remove('hidden');
+        showStatusMessage(L.status_edit_id(editingTransactionId), 'indigo');
+        document.getElementById('transaction-form').scrollIntoView({ behavior: 'smooth' });
+    };
+    
+    window.resetForm = function() {
+        editingTransactionId = null;
+        document.getElementById('transaction-form').reset();
+        document.getElementById('date').valueAsDate = new Date();
+        document.getElementById('transaction-button').textContent = L.record_button;
+        document.getElementById('cancel-edit-button').classList.add('hidden');
+        document.getElementById('status-message').className = 'hidden';
+    };
+    
+    window.deleteTransaction = function(id) {
+        if (confirm('Are you sure you want to delete this transaction?')) {
+            allTransactions = allTransactions.filter(t => t.id !== id);
+            saveTransactions();
+            loadTransactions();
+            showStatusMessage(L.status_delete_success, 'green');
+            
+            if (editingTransactionId === id) {
+                resetForm();
+            }
+        }
+    };
+    
+    function saveTransaction(event) {
+        event.preventDefault();
+        const form = event.target;
+        
+        const transactionData = {
+            id: editingTransactionId || Date.now().toString(),
+            date: form.date.value,
+            description: form.description.value,
+            category: form.category.value,
+            amount: parseFloat(form.amount.value),
+        };
+        
+        showStatusMessage(editingTransactionId ? L.status_updating : L.status_saving, 'indigo');
+        
+        if (editingTransactionId) {
+            // Update existing transaction
+            const index = allTransactions.findIndex(t => t.id === editingTransactionId);
+            if (index !== -1) {
+                allTransactions[index] = transactionData;
+                showStatusMessage(L.status_update_success, 'green');
+            }
+        } else {
+            // Add new transaction
+            allTransactions.push(transactionData);
+            showStatusMessage(L.status_success, 'green');
+        }
+        
+        saveTransactions();
+        loadTransactions();
+        resetForm();
+    }
+    
+    // --- FINANCIAL REPORT CALCULATIONS ---
+    
+    function calculateReportData(transactions) {
+        const data = {
+            sopl: {},
+            sofp: { assets: {}, liabilities: {}, equity: {} },
+            socf: { operating: {}, investing: {}, financing: {} },
+            netProfit: 0,
+        };
+        
+        let currentCash = 0;
+        
+        transactions.forEach(t => {
+            const map = ACCOUNT_MAP[t.category];
+            if (!map) return;
+            
+            const amount = parseFloat(t.amount);
+            
+            // A. SOPL Calculation
+            if (map.report === 'SOPL') {
+                const line = map.lineItem; 
+                const value = amount * map.effect;
+                data.sopl[line] = (data.sopl[line] || 0) + value;
+                data.netProfit += value;
+            }
+            
+            // B. SOFP Calculation
+            if (map.report === 'SOFP') {
+                const account = map.account; 
+                if (map.lineItem.includes("Assets")) {
+                    data.sofp.assets[account] = (data.sofp.assets[account] || 0) + amount;
+                } else if (map.lineItem.includes("Liabilities")) {
+                    data.sofp.liabilities[account] = (data.sofp.liabilities[account] || 0) + amount;
+                } else if (map.lineItem.includes("Equity")) {
+                    data.sofp.equity[account] = (data.sofp.equity[account] || 0) + (amount * map.effect);
+                }
+            }
+            
+            // C. SOCF Calculation and Cash Tracking
+            let flowAmount = amount;
+            if (map.effect === -1 || map.account === 'Equipment') {
+                flowAmount = -amount;
+            } else if (map.account === 'Owner\'s Drawings') {
+                flowAmount = -amount;
+            }
+            
+            if (map.flow) {
+                const account = map.account;
+                data.socf[map.flow.toLowerCase()][account] = (data.socf[map.flow.toLowerCase()][account] || 0) + flowAmount;
+            }
+            
+            // D. Cash Calculation
+            if (map.effect === 1 && map.report !== 'SOFP') { 
+                currentCash += amount;
+            } else if (map.effect === -1) { 
+                currentCash -= amount;
+            } else if (map.account === 'Equipment') { 
+                currentCash -= amount;
+            } else if (map.account === 'Owner\'s Capital' || map.account === 'Loan Payable') { 
+                currentCash += amount;
+            }
+        });
+        
+        data.sofp.assets['Cash & Bank Balance'] = currentCash;
+        return data;
+    }
+    
+    function calculateMonthlyReports() {
+        const monthlyDataMap = {}; 
+        const sortedTransactions = allTransactions.sort((a, b) => a.date.localeCompare(b.date));
+        
+        sortedTransactions.forEach(t => {
+            const monthKey = t.date.substring(0, 7);
+            const map = ACCOUNT_MAP[t.category];
+            if (!map || map.report !== 'SOPL') return;
+            
+            if (!monthlyDataMap[monthKey]) {
+                monthlyDataMap[monthKey] = { netProfit: 0, revenue: 0, expenses: 0 };
+            }
+            
+            const value = parseFloat(t.amount) * map.effect;
+            monthlyDataMap[monthKey].netProfit += value;
+            
+            if (value > 0) {
+                monthlyDataMap[monthKey].revenue += value;
+            } else {
+                monthlyDataMap[monthKey].expenses += value; 
+            }
+        });
+        
+        const monthlyKeys = Object.keys(monthlyDataMap).sort();
+        
+        return {
+            labels: monthlyKeys.map(key => formatMonthYear(key)),
+            revenue: monthlyKeys.map(key => monthlyDataMap[key].revenue),
+            expenses: monthlyKeys.map(key => monthlyDataMap[key].expenses * -1),
+            netProfit: monthlyKeys.map(key => monthlyDataMap[key].netProfit)
+        };
+    }
+    
+    function calculateKeyRatios(cumulativeData) {
+        const sopl = cumulativeData.sopl;
+        
+        let totalRevenue = (sopl["Revenue"] || 0) + (sopl["Other Income"] || 0);
+        const ratios = {};
+        
+        // 1. Profitability Score
+        ratios['Profitability Score'] = totalRevenue > 0 
+            ? cumulativeData.netProfit / totalRevenue
+            : 0;
+            
+        // 2. Financial Safety Score
+        const sofp = cumulativeData.sofp;
+        const totalAssets = Object.values(sofp.assets).reduce((sum, val) => sum + val, 0);
+        const totalLiabilities = Object.values(sofp.liabilities).reduce((sum, val) => sum + val, 0);
+        
+        ratios['Financial Safety Score'] = totalLiabilities > 0 
+            ? totalAssets / totalLiabilities
+            : totalAssets > 0 ? Infinity : 0;
+            
+        // 3. Asset Efficiency
+        ratios['Asset Efficiency'] = totalAssets > 0 
+            ? cumulativeData.netProfit / totalAssets
+            : 0;
+            
+        return ratios;
+    }
+    
+    // --- REPORT RENDERING FUNCTIONS ---
+    
+    const renderReport = (title, periodTitle, contentHtml, reportId) => {
+        const reportType = reportId.split('-')[0].toUpperCase();
+        const periodText = currentLanguage === 'ml' 
+            ? (reportType === 'SOPL' ? `Untuk Bulan ${periodTitle}` : `Sehingga ${periodTitle}`)
+            : (reportType === 'SOPL' ? `For the Month of ${periodTitle}` : `As of ${periodTitle}`);
+            
+        return `
+            <div id="${reportId}" class="report-card bg-white p-6 rounded-xl shadow-xl border border-gray-100">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 class="text-2xl font-bold text-gray-800">${title}</h3>
+                        <p class="text-sm text-gray-500">${periodText}</p>
+                    </div>
+                    <div class="print-button-container no-print">
+                        <button onclick="generatePDF('${reportId}', '${periodTitle.replace(/'/g, "\\'")}', '${reportType}')" class="py-1 px-3 border border-green-600 rounded-md shadow-sm text-xs font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150">
+                            ${L.pdf_download}
+                        </button>
+                    </div>
+                </div>
+                <table class="w-full report-table text-gray-700">
+                    ${contentHtml}
+                </table>
+            </div>
+        `;
+    };
+    
+    function renderSOPL(soplData, netProfit, periodTitle, reportId) {
+        let rows = '';
+        let totalRevenue = 0;
+        let totalExpenses = 0;
+        
+        rows += `<tr><td colspan="3" class="pt-4 pb-2 font-semibold text-lg text-indigo-700">${L.report_revenue}</td></tr>`;
+        for (const line in soplData) {
+            if (soplData[line] > 0) {
+                rows += `<tr><td>${L[line]}</td><td></td><td class="text-right">${formatCurrency(soplData[line])}</td></tr>`;
+                totalRevenue += soplData[line];
+            }
+        }
+        rows += `<tr class="border-t border-b-2 font-bold bg-indigo-50"><td colspan="2">${L.report_total_revenue}</td><td class="text-right">${formatCurrency(totalRevenue)}</td></tr>`;
+        
+        rows += `<tr><td colspan="3" class="pt-6 pb-2 font-semibold text-lg text-red-700">${L.report_expenses}</td></tr>`;
+        for (const line in soplData) {
+            if (soplData[line] < 0) {
+                rows += `<tr><td>${L[line]}</td><td class="text-right">${formatCurrency(soplData[line] * -1)}</td><td></td></tr>`;
+                totalExpenses += soplData[line];
+            }
+        }
+        rows += `<tr class="border-t border-b-2 font-bold bg-red-50"><td colspan="2">${L.report_total_expenses}</td><td class="text-right">(${formatCurrency(totalExpenses * -1)})</td></tr>`;
+        
+        rows += `<tr class="font-extrabold text-lg ${netProfit >= 0 ? 'text-green-700' : 'text-red-700'} border-t-4 border-b-4 mt-4 bg-gray-200">
+            <td colspan="2">${L.report_net_profit}</td>
+            <td class="text-right">${formatCurrency(netProfit)}</td>
+        </tr>`;
+        
+        return renderReport(L.sopl_title, periodTitle, `<tbody>${rows}</tbody>`, reportId);
+    }
+    
+    function renderSOFP(assets, liabilities, netProfit, equityAccounts, periodTitle, reportId) {
+        let assetRows = `<tr><td colspan="3" class="pt-4 pb-2 font-semibold text-lg text-indigo-700">${L.report_assets}</td></tr>`;
+        let totalAssets = 0;
+        
+        assetRows += `<tr><td colspan="3" class="pt-2 font-medium text-gray-600">${L.report_current_assets}</td></tr>`;
+        const cashKey = 'Cash & Bank Balance';
+        const cash = assets[cashKey] || 0;
+        assetRows += `<tr><td>${L[cashKey]}</td><td></td><td class="text-right">${formatCurrency(cash)}</td></tr>`;
+        totalAssets += cash;
+        
+        assetRows += `<tr><td colspan="3" class="pt-4 font-medium text-gray-600">${L.report_non_current_assets}</td></tr>`;
+        for (const account in assets) {
+            if (account !== cashKey) {
+                assetRows += `<tr><td>${L[account]}</td><td></td><td class="text-right">${formatCurrency(assets[account])}</td></tr>`;
+                totalAssets += assets[account];
+            }
+        }
+        assetRows += `<tr class="border-t-2 border-b-2 font-bold bg-indigo-50"><td colspan="2">${L.report_total_assets}</td><td class="text-right">${formatCurrency(totalAssets)}</td></tr>`;
+        
+        let liabilityEquityRows = `<tr><td colspan="3" class="pt-6 pb-2 font-semibold text-lg text-red-700">${L.report_liabilities_equity}</td></tr>`;
+        
+        liabilityEquityRows += `<tr><td colspan="3" class="pt-2 font-medium text-gray-600">${L.report_liabilities}</td></tr>`;
+        let totalLiabilities = 0;
+        for (const account in liabilities) {
+            liabilityEquityRows += `<tr><td>${L[account]}</td><td></td><td class="text-right">${formatCurrency(liabilities[account])}</td></tr>`;
+            totalLiabilities += liabilities[account];
+        }
+        liabilityEquityRows += `<tr class="border-t font-medium text-sm"><td colspan="2">${L.report_total_liabilities}</td><td class="text-right">${formatCurrency(totalLiabilities)}</td></tr>`;
+        
+        let totalEquityAccounts = Object.values(equityAccounts).reduce((sum, val) => sum + val, 0);
+        const totalEquity = totalEquityAccounts + netProfit;
+        
+        liabilityEquityRows += `<tr><td colspan="3" class="pt-4 font-medium text-gray-600">${L.report_equity}</td></tr>`;
+        
+        for (const account in equityAccounts) {
+            const amount = equityAccounts[account];
+            const display = amount >= 0 ? formatCurrency(amount) : `(${formatCurrency(amount * -1)})`;
+            liabilityEquityRows += `<tr><td>${L[account]}</td><td></td><td class="text-right">${display}</td></tr>`;
+        }
+        
+        liabilityEquityRows += `<tr><td>${L.report_retained_earnings}</td><td></td><td class="text-right">${formatCurrency(netProfit)}</td></tr>`;
+        
+        liabilityEquityRows += `<tr class="font-extrabold text-lg text-gray-700 border-t-2">
+            <td colspan="2">${L.report_closing_equity}</td>
+            <td class="text-right">${formatCurrency(totalEquity)}</td>
+        </tr>`;
+        
+        const totalLAndE = totalLiabilities + totalEquity;
+        
+        liabilityEquityRows += `<tr class="font-extrabold text-lg text-gray-700 border-t-4 border-b-4 mt-4 bg-gray-200">
+            <td colspan="2">${L.report_total_l_e}</td>
+            <td class="text-right">${formatCurrency(totalLAndE)}</td>
+        </tr>`;
+        
+        const diff = Math.abs(totalAssets - totalLAndE);
+        const check = diff < 0.01 ? L.report_balanced : L.report_unbalanced;
+        const checkColor = diff < 0.01 ? 'text-green-600' : 'text-red-600';
+        
+        liabilityEquityRows += `<tr><td colspan="3" class="text-center pt-3 text-sm font-semibold ${checkColor}">${L.report_balance_check(check, diff)}</td></tr>`;
+        
+        return renderReport(L.sofp_title, periodTitle, `<tbody>${assetRows}<tr><td colspan="3"><hr class="my-4"></td></tr>${liabilityEquityRows}</tbody>`, reportId);
+    }
+    
+    function renderSOCF(socfData, endingCashBalance, periodTitle, reportId) {
+        let rows = '';
+        
+        rows += `<tr><td colspan="3" class="pt-4 pb-2 font-semibold text-lg text-blue-700">${L.cf_operating}</td></tr>`;
+        let totalOperating = 0;
+        for (const account in socfData.operating) {
+            const amount = socfData.operating[account];
+            const display = amount >= 0 ? formatCurrency(amount) : `(${formatCurrency(amount * -1)})`;
+            rows += `<tr class="${amount >= 0 ? '' : 'text-red-600'}"><td>${L[account]}</td><td></td><td class="text-right">${display}</td></tr>`;
+            totalOperating += amount;
+        }
+        rows += `<tr class="border-t-2 font-bold bg-blue-50"><td colspan="2">${L.cf_net_op}</td><td class="text-right">${formatCurrency(totalOperating)}</td></tr>`;
+        
+        rows += `<tr><td colspan="3" class="pt-6 pb-2 font-semibold text-lg text-blue-700">${L.cf_investing}</td></tr>`;
+        let totalInvesting = 0;
+        for (const account in socfData.investing) {
+            const amount = socfData.investing[account];
+            const display = amount >= 0 ? formatCurrency(amount) : `(${formatCurrency(amount * -1)})`;
+            rows += `<tr class="${amount >= 0 ? '' : 'text-red-600'}"><td>${L[account]}</td><td></td><td class="text-right">${display}</td></tr>`;
+            totalInvesting += amount;
+        }
+        rows += `<tr class="border-t-2 font-bold bg-blue-50"><td colspan="2">${L.cf_net_inv}</td><td class="text-right">${formatCurrency(totalInvesting)}</td></tr>`;
+        
+        rows += `<tr><td colspan="3" class="pt-6 pb-2 font-semibold text-lg text-blue-700">${L.cf_financing}</td></tr>`;
+        let totalFinancing = 0;
+        for (const account in socfData.financing) {
+            const amount = socfData.financing[account];
+            const display = amount >= 0 ? formatCurrency(amount) : `(${formatCurrency(amount * -1)})`;
+            rows += `<tr class="${amount >= 0 ? '' : 'text-red-600'}"><td>${L[account]}</td><td></td><td class="text-right">${display}</td></tr>`;
+            totalFinancing += amount;
+        }
+        rows += `<tr class="border-t-2 font-bold bg-blue-50"><td colspan="2">${L.cf_net_fin}</td><td class="text-right">${formatCurrency(totalFinancing)}</td></tr>`;
+        
+        const netChangeInCash = totalOperating + totalInvesting + totalFinancing;
+        
+        rows += '<tr><td colspan="3" class="pt-6"></td></tr>';
+        rows += `<tr class="font-bold border-t-2">
+            <td colspan="2">${L.cf_net_change}</td>
+            <td class="text-right">${formatCurrency(netChangeInCash)}</td>
+        </tr>`;
+        
+        rows += `<tr class="font-extrabold text-lg text-gray-700 border-t-4 border-b-4 mt-4 bg-gray-200">
+            <td colspan="2">${L.cf_ending_cash}</td>
+            <td class="text-right">${formatCurrency(endingCashBalance)}</td>
+        </tr>`;
+        
+        return renderReport(L.socf_title, periodTitle, `<tbody>${rows}</tbody>`, reportId);
+    }
+    
+    function renderDashboard(monthlyData, ratios, periodTitle) {
+        const dashboardView = document.getElementById('view-dashboard');
+        
+        // 1. Render Ratios
+        let ratioCards = '';
+        
+        // Card 1: Profitability Score
+        const profitabilityScore = formatPercentage(ratios['Profitability Score']);
+        const profitColor = ratios['Profitability Score'] >= 0.1 ? 'text-green-600' : (ratios['Profitability Score'] > 0 ? 'text-yellow-600' : 'text-red-600');
+        
+        ratioCards += `
+            <div class="metric-card border-indigo-200">
+                <p class="text-sm font-medium text-gray-500">${L.metric_profitability}</p>
+                <p class="text-3xl font-extrabold ${profitColor} mt-1">
+                    ${profitabilityScore}
+                </p>
+                <p class="text-xs text-gray-400 mt-2">${L.metric_profitability_desc}</p>
+            </div>
+        `;
+        
+        // Card 2: Financial Safety Score
+        const safetyRatio = ratios['Financial Safety Score'];
+        const safetyScoreText = safetyRatio === Infinity 
+            ? L.report_balanced
+            : safetyRatio.toFixed(1) + ':1';
+        const safetyScoreColor = safetyRatio === Infinity || safetyRatio >= 2 ? 'text-green-600' : (safetyRatio >= 1 ? 'text-yellow-600' : 'text-red-600');
+        
+        let safetyExplanation;
+        if (safetyRatio === Infinity) {
+            safetyExplanation = L.metric_safety_desc_inf;
+        } else if (safetyRatio >= 1) {
+            safetyExplanation = L.metric_safety_desc_safe(safetyRatio);
+        } else {
+            safetyExplanation = L.metric_safety_desc_risk;
+        }
+        
+        ratioCards += `
+            <div class="metric-card border-green-200">
+                <p class="text-sm font-medium text-gray-500">${L.metric_safety}</p>
+                <p class="text-3xl font-extrabold ${safetyScoreColor} mt-1">
+                    ${safetyScoreText}
+                </p>
+                <p class="text-xs text-gray-400 mt-2">${safetyExplanation}</p>
+            </div>
+        `;
+        
+        // Card 3: Asset Efficiency
+        const assetEfficiency = formatPercentage(ratios['Asset Efficiency']);
+        const assetColor = ratios['Asset Efficiency'] >= 0 ? 'text-blue-600' : 'text-red-600';
+        
+        ratioCards += `
+            <div class="metric-card border-blue-200">
+                <p class="text-sm font-medium text-gray-500">${L.metric_asset_efficiency}</p>
+                <p class="text-3xl font-extrabold ${assetColor} mt-1">
+                    ${assetEfficiency}
+                </p>
+                <p class="text-xs text-gray-400 mt-2">${L.metric_asset_efficiency_desc}</p>
+            </div>
+        `;
+        
+        // 2. Render Container
+        dashboardView.innerHTML = `
+            <div id="dashboard-content">
+                <h3 class="text-xl font-semibold mb-4 text-gray-800">${L.dashboard_title}</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    ${ratioCards}
+                </div>
+                
+                <h3 class="text-xl font-semibold mb-4 text-gray-800">${L.dashboard_trend_title}</h3>
+                <p class="text-sm text-gray-500 mb-4">${L.dashboard_trend_subtitle}</p>
+                
+                <div class="report-card">
+                    <div class="p-4">
+                        <canvas id="revenueExpenseChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 3. Generate Chart
+        const chartCtx = document.getElementById('revenueExpenseChart');
+        if (chartCtx) {
+            drawChart(chartCtx, monthlyData);
+        }
+    }
+    
+    function drawChart(ctx, monthlyData) {
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
+        
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: monthlyData.labels,
+                datasets: [
+                    {
+                        label: L.chart_income,
+                        data: monthlyData.revenue,
+                        backgroundColor: 'rgba(79, 70, 229, 0.7)',
+                        borderColor: 'rgb(79, 70, 229)',
+                        borderWidth: 1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: L.chart_spending,
+                        data: monthlyData.expenses,
+                        backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                        borderColor: 'rgb(239, 68, 68)',
+                        borderWidth: 1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        type: 'line',
+                        label: L.chart_profit,
+                        data: monthlyData.netProfit,
+                        backgroundColor: 'rgba(16, 185, 129, 0.9)',
+                        borderColor: 'rgb(16, 185, 129)',
+                        borderWidth: 2,
+                        fill: false,
+                        yAxisID: 'y'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    x: {
+                        grid: { display: false }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: L.chart_y_title
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    title: {
+                        display: true,
+                        text: L.chart_trend_title
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderTransactionList(transactions) {
+        const listBody = document.getElementById('transactions-list');
+        listBody.innerHTML = '';
+        
+        transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        if (transactions.length === 0) {
+            listBody.innerHTML = `<tr><td colspan="5" class="px-6 py-4 text-center text-gray-400">${L.no_trans}</td></tr>`;
+            return;
+        }
+        
+        transactions.forEach((tData, index) => {
+            const row = document.createElement('tr');
+            row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+            
+            const translatedCategory = CATEGORY_DISPLAY_MAP[tData.category] ? CATEGORY_DISPLAY_MAP[tData.category]() : tData.category;
+            
+            const transactionJson = JSON.stringify({
+                id: tData.id, 
+                date: tData.date, 
+                description: tData.description, 
+                category: tData.category, 
+                amount: tData.amount
+            }).replace(/"/g, '&quot;');
+            
+            row.innerHTML = `
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${tData.date}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${tData.description}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${translatedCategory}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-right text-gray-900">${formatCurrency(tData.amount)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
+                    <button onclick="editTransaction(${transactionJson})" class="text-indigo-600 hover:text-indigo-800 font-medium mr-2">${L.edit}</button>
+                    <button onclick="deleteTransaction('${tData.id}')" class="text-red-600 hover:text-red-800 font-medium">${L.delete}</button>
+                </td>
+            `;
+            listBody.appendChild(row);
+        });
+    }
+    
+    // --- VIEW MANAGEMENT ---
+    
+    window.showView = function(viewId) {
+        currentView = viewId;
+        
+        // Hide all views
+        document.querySelectorAll('.report-view').forEach(view => view.classList.add('hidden'));
+        // Deactivate all tabs
+        document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+        
+        // Show the selected view and activate its tab
+        document.getElementById(`view-${viewId}`).classList.remove('hidden');
+        document.getElementById(`tab-${viewId}`).classList.add('active');
+        
+        // Ensure reports are recalculated if needed when switching views
+        if (viewId !== 'transactions' && viewId !== 'dashboard') {
+            updateReportsView();
+        }
+    };
+    
+    // --- REPORT UPDATE ---
+    
+    function updateReportsView() {
+        const reportMonthInput = document.getElementById('report-month');
+        const reportMonth = reportMonthInput.value;
+        
+        if (!reportMonth && currentView !== 'dashboard') {
+            const noMonthMsg = `<div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100 text-center text-gray-500">${L.no_month_msg}</div>`;
+            document.getElementById('view-sopl').innerHTML = noMonthMsg;
+            document.getElementById('view-sofp').innerHTML = noMonthMsg;
+            document.getElementById('view-socf').innerHTML = noMonthMsg;
+            return;
+        }
+        
+        // Calculate monthly data for dashboard chart
+        const monthlyData = calculateMonthlyReports();
+        const periodTitle = formatMonthYear(reportMonth);
+        
+        // Filter transactions
+        const monthlyTransactions = allTransactions.filter(t => t.date.substring(0, 7) === reportMonth);
+        const cumulativeTransactions = allTransactions.filter(t => {
+            return t.date.localeCompare(reportMonth + '-31') <= 0;
+        });
+        
+        const cumulativeData = calculateReportData(cumulativeTransactions);
+        
+        // Render Dashboard
+        const ratios = calculateKeyRatios(cumulativeData);
+        renderDashboard(monthlyData, ratios, periodTitle);
+        
+        // Check if no data
+        if (monthlyTransactions.length === 0 && cumulativeTransactions.length === 0 && reportMonth) {
+            const noDataMsg = `<div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100 text-center text-gray-500">${L.no_data_msg}</div>`;
+            if (currentView !== 'dashboard') {
+                document.getElementById('view-sopl').innerHTML = noDataMsg;
+                document.getElementById('view-sofp').innerHTML = noDataMsg;
+                document.getElementById('view-socf').innerHTML = noDataMsg;
+            }
+            return;
+        }
+        
+        // Calculate and render reports
+        const monthlyReportData = calculateReportData(monthlyTransactions);
+        
+        // SOPL is monthly
+        document.getElementById('view-sopl').innerHTML = renderSOPL(monthlyReportData.sopl, monthlyReportData.netProfit, formatMonthYear(reportMonth), 'sopl-report');
+        // SOFP is cumulative
+        document.getElementById('view-sofp').innerHTML = renderSOFP(cumulativeData.sofp.assets, cumulativeData.sofp.liabilities, cumulativeData.netProfit, cumulativeData.sofp.equity, periodTitle, 'sofp-report');
+        // SOCF is cumulative
+        document.getElementById('view-socf').innerHTML = renderSOCF(cumulativeData.socf, cumulativeData.sofp.assets['Cash & Bank Balance'] || 0, `For the Period Ending ${periodTitle}`, 'socf-report');
+    }
+    
+    // --- PDF GENERATION ---
+    
+    window.generatePDF = function(reportId, periodTitle, reportType) {
+        const reportTitle = reportType === 'SOPL' ? L.sopl_title : (reportType === 'SOFP' ? L.sofp_title : L.socf_title);
+        
+        const reportElement = document.getElementById(reportId);
+        if (!reportElement) {
+            console.error("Report element not found:", reportId);
+            return;
+        }
+        
+        const printBtn = reportElement.querySelector('.print-button-container');
+        if (printBtn) printBtn.style.display = 'none';
+        
+        showStatusMessage(L.pdf_generating(reportType), 'indigo');
+        
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4'); 
+        
+        html2canvas(reportElement, { 
+            scale: 2, 
+            logging: false,
+            useCORS: true 
+        }).then(canvas => {
+            const imgData = canvas.toDataURL('image/png');
+            
+            const pdfWidth = doc.internal.pageSize.getWidth();
+            const pdfHeight = doc.internal.pageSize.getHeight();
+            
+            const imgHeight = canvas.height * pdfWidth / canvas.width;
+            
+            let heightLeft = imgHeight;
+            let position = 0;
+            
+            doc.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+            heightLeft -= pdfHeight;
+            
+            while (heightLeft >= 0) {
+                position = heightLeft - imgHeight;
+                doc.addPage();
+                doc.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+                heightLeft -= pdfHeight;
+            }
+            
+            const fileName = `${reportType}-${periodTitle.replace(/\s/g, '-')}.pdf`;
+            doc.save(fileName);
+            
+            // Restore original styles
+            if (printBtn) printBtn.style.display = 'block';
+            
+            showStatusMessage(L.pdf_success(fileName), 'green');
+            
+        }).catch(error => {
+            console.error("Error generating PDF:", error);
+            showStatusMessage(L.pdf_error(error.message), 'red');
+            if (printBtn) printBtn.style.display = 'block';
+        });
+    };
+    
+    // --- LANGUAGE MANAGEMENT ---
+    
+    window.setLanguage = function(lang) {
+        currentLanguage = lang;
+        L = lang === 'ml' ? L_ML : L_EN;
+        localStorage.setItem('smartbook_language', currentLanguage);
+        
+        // Update UI
+        initializeUI();
+        
+        // Update language selector
+        document.getElementById('language-select').value = currentLanguage;
+        
+        // Update dynamic content
+        renderTransactionList(allTransactions);
+        updateReportsView();
+        
+        // Restore current view
+        showView(currentView);
+    };
+    
+    window.selectLanguageAndStart = function(lang) {
+        // Hide modal
+        document.getElementById('language-modal').classList.remove('show');
+        
+        // Set language
+        setLanguage(lang);
+        
+        // Initialize app
+        initializeApp();
+    };
+    
+    function showLanguageModal() {
+        document.getElementById('language-modal').classList.add('show');
+    }
+    
+    // --- INITIALIZATION ---
+    
+    function initializeUI() {
+        // Header/Title
+        document.getElementById('app-subtitle').textContent = L.subtitle;
+        
+        // Form
+        document.getElementById('form-title').textContent = L.form_title;
+        document.getElementById('label-date').textContent = L.label_date;
+        document.getElementById('label-description').textContent = L.label_description;
+        document.getElementById('label-category').textContent = L.label_category;
+        document.getElementById('label-amount').textContent = L.label_amount;
+        document.getElementById('transaction-button').textContent = L.record_button;
+        document.getElementById('cancel-edit-button').textContent = L.cancel_button;
+        
+        // Form Categories
+        const categorySelect = document.getElementById('category');
+        const selectedCategory = categorySelect.value;
+        
+        categorySelect.innerHTML = `
+            <option value="" disabled selected>${L.cat_select}</option>
+            <optgroup label="${L.cat_group_income}">
+                <option value="Sales Revenue">${L.cat_sales}</option>
+                <option value="Interest Received">${L.cat_interest}</option>
+                <option value="Capital Injection">${L.cat_capital}</option>
+                <option value="Loan Received">${L.cat_loan}</option>
+            </optgroup>
+            <optgroup label="${L.cat_group_expense}">
+                <option value="Rent Expense">${L.cat_rent}</option>
+                <option value="Utilities Expense">${L.cat_utilities}</option>
+                <option value="Wages & Salaries">${L.cat_wages}</option>
+                <option value="Supplies & Consumables">${L.cat_supplies}</option>
+                <option value="Other Operating Expense">${L.cat_other_op}</option>
+            </optgroup>
+            <optgroup label="${L.cat_group_investment}">
+                <option value="Equipment Purchase">${L.cat_equipment}</option>
+                <option value="Drawings">${L.cat_drawings}</option>
+            </optgroup>
+        `;
+        
+        if (selectedCategory) {
+            categorySelect.value = selectedCategory;
+        }
+        
+        // Report Controls/Tabs
+        document.getElementById('report-viewer-title').textContent = L.report_viewer_title;
+        document.getElementById('label-reporting-period').textContent = L.label_reporting_period;
+        document.getElementById('tab-transactions').textContent = L.tab_transactions;
+        document.getElementById('tab-sopl').textContent = L.tab_sopl;
+        document.getElementById('tab-sofp').textContent = L.tab_sofp;
+        document.getElementById('tab-socf').textContent = L.tab_socf;
+        document.getElementById('tab-dashboard').textContent = L.tab_dashboard;
+        
+        // Transaction List Headers
+        document.getElementById('transactions-header').textContent = L.list_header;
+        document.getElementById('th-date').textContent = L.th_date;
+        document.getElementById('th-description').textContent = L.th_description;
+        document.getElementById('th-category').textContent = L.th_category;
+        document.getElementById('th-amount').textContent = L.th_amount;
+        document.getElementById('th-actions').textContent = L.th_actions;
+        
+        // Placeholders
+        document.getElementById('dashboard-placeholder').textContent = L.loading;
+        document.getElementById('sopl-placeholder').textContent = L.sopl_placeholder;
+        document.getElementById('sofp-placeholder').textContent = L.sofp_placeholder;
+        document.getElementById('socf-placeholder').textContent = L.socf_placeholder;
+        
+        // Set initial date/month
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const defaultMonth = `${yyyy}-${mm}`;
+        
+        document.getElementById('date').valueAsDate = today;
+        if (!document.getElementById('report-month').value) {
+            document.getElementById('report-month').value = defaultMonth;
+        }
+    }
+    
+    function initializeApp() {
+        // Check for stored language
+        const storedLanguage = localStorage.getItem('smartbook_language');
+        if (storedLanguage) {
+            setLanguage(storedLanguage);
+        } else {
+            // Show language modal if no preference
+            showLanguageModal();
+            return;
+        }
+        
+        // Load transactions
+        loadTransactions();
+        
+        // Add event listeners
+        document.getElementById('report-month').addEventListener('change', updateReportsView);
+        document.getElementById('transaction-form').addEventListener('submit', saveTransaction);
+        
+        // Set default view
+        showView('dashboard');
+    }
+    
+    // Start the app when DOM is loaded
+    document.addEventListener('DOMContentLoaded', initializeApp);
+</script>
+
+</body>
+</html>
