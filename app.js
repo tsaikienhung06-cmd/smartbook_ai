@@ -386,7 +386,8 @@ const L_ML = {
     "Utilities Expense": "Belanja Utiliti",
     "Wages & Salaries Expense": "Belanja Gaji & Upah",
     "Supplies Expense": "Belanja Bekalan",
-    "Other Operating Expense": "Belanja Operasi Lain"
+    "Other Operating Expense": "Belanja Operasi Lain",
+    "e.g., Sale": "e.g., Jualan"
 };
 
 // --- UTILITY FUNCTIONS ---
@@ -1269,4 +1270,5 @@ document.addEventListener('DOMContentLoaded', () => {
         setLanguage(savedLanguage);
         initializeApp();
     }
+
 });
